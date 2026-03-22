@@ -15,7 +15,7 @@ import numpy as np
 
 
 def load_model(weights_path):
-    """加载 YOLOv8 模型"""
+    """加载 YOLO 模型"""
     try:
         from ultralytics import YOLO
     except ImportError:

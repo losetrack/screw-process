@@ -8,3 +8,4 @@ screw_count/augmented/
 screw_count/weights/
 screw_count/runs/
 screw_count/screws.yaml
+screw_count/vis/
