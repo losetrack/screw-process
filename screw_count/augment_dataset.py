@@ -15,6 +15,7 @@
 """
 
 import argparse
+import re
 import random
 import shutil
 from pathlib import Path
@@ -318,40 +319,71 @@ def augment_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
 
 
 def split_dataset(output_dir, val_ratio=0.15, seed=42):
-    """将增强后的数据集按比例分成 train/val"""
+    """将增强后的数据集按原图分组切分成 train/val，避免数据泄漏"""
+    if not 0 <= val_ratio <= 1:
+        raise ValueError(f"val_ratio must be in [0, 1], got {val_ratio}")
+
     random.seed(seed)
     out = Path(output_dir)
-    img_paths = sorted((out / 'images').glob('*.jpg'))
+    img_dir = out / 'images'
+    label_dir = out / 'labels'
 
-    # 只用原图做 val（避免增强图和原图同时出现在 train/val）
-    originals = [p for p in img_paths if '_aug' not in p.stem]
-    augmented = [p for p in img_paths if '_aug' in p.stem]
+    img_paths = sorted([p for p in img_dir.iterdir()
+                        if p.is_file() and p.suffix.lower() in {'.jpg', '.jpeg', '.png'}])
+    if not img_paths:
+        raise FileNotFoundError(f"No images found in {img_dir}")
 
-    n_val = max(1, int(len(originals) * val_ratio))
-    random.shuffle(originals)
-    val_stems  = {p.stem for p in originals[:n_val]}
+    aug_stem_pattern = re.compile(r'^(?P<base>.+)_aug\d+$')
 
+    def group_stem(stem):
+        m = aug_stem_pattern.match(stem)
+        return m.group('base') if m else stem
+
+    # 将同一原图及其增强图放入同一组，切分时整组进入 train 或 val
+    groups = {}
+    for p in img_paths:
+        base = group_stem(p.stem)
+        groups.setdefault(base, []).append(p)
+
+    group_keys = list(groups.keys())
+    random.shuffle(group_keys)
+
+    n_groups = len(group_keys)
+    n_val = int(n_groups * val_ratio)
+    if 0 < val_ratio < 1 and n_groups > 1:
+        n_val = max(1, min(n_groups - 1, n_val))
+    else:
+        n_val = min(max(n_val, 0), n_groups)
+
+    val_group_keys = set(group_keys[:n_val])
+
+    # 清理旧切分结果，避免重复运行叠加脏数据
     for split in ['train', 'val']:
-        (out / split / 'images').mkdir(parents=True, exist_ok=True)
-        (out / split / 'labels').mkdir(parents=True, exist_ok=True)
+        split_dir = out / split
+        if split_dir.exists():
+            shutil.rmtree(split_dir)
+        (split_dir / 'images').mkdir(parents=True, exist_ok=True)
+        (split_dir / 'labels').mkdir(parents=True, exist_ok=True)
 
     def move_to(p, split):
-        lbl = out / 'labels' / (p.stem + '.txt')
+        lbl = label_dir / (p.stem + '.txt')
         shutil.copy(p, out / split / 'images' / p.name)
         if lbl.exists():
             shutil.copy(lbl, out / split / 'labels' / lbl.name)
 
-    # 原图分配
-    for p in originals:
-        split = 'val' if p.stem in val_stems else 'train'
-        move_to(p, split)
+    n_train = 0
+    n_val_imgs = 0
+    for base, group_images in groups.items():
+        split = 'val' if base in val_group_keys else 'train'
+        for p in group_images:
+            move_to(p, split)
+            if split == 'train':
+                n_train += 1
+            else:
+                n_val_imgs += 1
 
-    # 增强图全部进 train
-    for p in augmented:
-        move_to(p, 'train')
-
-    n_train = len(augmented) + len(originals) - n_val
-    print(f"\nSplit: train={n_train}, val={n_val}")
+    print(f"\nSplit: train={n_train}, val={n_val_imgs}")
+    print(f"  group split: total_groups={n_groups}, val_groups={n_val}")
     print(f"  train/images  →  {out}/train/images")
     print(f"  val/images    →  {out}/val/images")
 

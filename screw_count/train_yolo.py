@@ -1,7 +1,7 @@
 """
 YOLOv8 训练脚本 - 螺丝计数任务
 用法:
-    python train_yolo.py --data_dir ./augmented --epochs 150 --model yolov8s
+    python train_yolo.py --data_dir ./augmented --epochs 150 --model yolo11s
 
 依赖:
     pip install ultralytics opencv-python albumentations
@@ -136,12 +136,6 @@ def validate_and_export(model, output_dir, model_name, data_yaml):
     print(f"\nmAP50   : {results.box.map50:.4f}")
     print(f"mAP50-95: {results.box.map:.4f}")
 
-    # 复制 best.pt 到顶层方便提交
-    dst = Path(output_dir) / 'best.pt'
-    shutil.copy(best_pt, dst)
-    print(f"\nbest.pt copied to {dst}")
-    print("请将此文件放入 submission/code/weights/best.pt")
-
 
 # ──────────────────────── 工具函数 ───────────────────────────────────
 
@@ -184,8 +178,10 @@ def main():
                         help='batch size，显存不足时改为 4')
     parser.add_argument('--imgsz',      type=int,   default=640)
     parser.add_argument('--model',      default='yolov8n',
-                        choices=['yolov8n', 'yolov8s', 'yolov8m'],
+                        choices=['yolo11n', 'yolo11s', 'yolo11m'],
                         help='n=最快, s=均衡(推荐), m=最精准但慢')
+    parser.add_argument('--model_path', default='',
+                        help='本地权重路径(如 ./weights/yolo11s.pt)，设置后优先使用')
     parser.add_argument('--freeze',     type=int,   default=10,
                         help='冻结前N层(迁移学习)，数据少用10，数据多用0')
     parser.add_argument('--output_dir', default='./runs',
@@ -216,10 +212,22 @@ def main():
     # 生成 YAML
     data_yaml = create_dataset_yaml(args.data_dir)
 
-    # 加载预训练模型
-    model_pt = f'{args.model}.pt'   # 自动从 ultralytics 下载
-    print(f"\n加载预训练模型: {model_pt}")
-    model = YOLO(model_pt)
+    # 加载预训练模型：优先 --model_path，其次 ./weights，最后自动下载
+    if args.model_path:
+        model_source = Path(args.model_path).expanduser().resolve()
+        if not model_source.exists():
+            raise FileNotFoundError(f"model_path not found: {model_source}")
+        print(f"\n加载本地模型(--model_path): {model_source}")
+    else:
+        local_default = (Path(__file__).resolve().parent / 'weights' / f'{args.model}.pt').resolve()
+        if local_default.exists():
+            model_source = local_default
+            print(f"\n加载本地模型(weights): {model_source}")
+        else:
+            model_source = f'{args.model}.pt'
+            print(f"\n本地未找到 {local_default.name}，将使用 Ultralytics 自动下载: {model_source}")
+
+    model = YOLO(str(model_source))
 
     # 打印训练配置
     train_kwargs = get_train_args(
@@ -253,11 +261,7 @@ def main():
 
     # 打印最终结果路径
     best_pt = Path(args.output_dir) / f'{args.model}_screws' / 'weights' / 'best.pt'
-    print("\n" + "="*50)
-    print("提交时需要的文件:")
-    print(f"  权重文件: {best_pt}")
-    print(f"  请复制到: submission/code/weights/best.pt")
-    print("="*50)
+    print(f"权重文件已保存到{best_pt}")
 
 
 if __name__ == '__main__':

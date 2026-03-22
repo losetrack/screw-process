@@ -6,3 +6,5 @@ screw_count/images/
 screw_count/labels/
 screw_count/augmented/
 screw_count/weights/
+screw_count/runs/
+screw_count/screws.yaml
