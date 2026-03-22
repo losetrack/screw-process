@@ -1,2 +1,8 @@
-*.png
-*.jpg
+.vscode/
+homograpy_restore/data/
+homograpy_restore/restored_images/
+screw_count/data/
+screw_count/images/
+screw_count/labels/
+screw_count/augmented/
+screw_count/weights/
