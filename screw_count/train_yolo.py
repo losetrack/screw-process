@@ -1,5 +1,5 @@
 """
-YOLOv8 训练脚本 - 螺丝计数任务
+YOLO 训练脚本 - 螺丝计数任务
 用法:
     python train_yolo.py --data_dir ./augmented --epochs 150 --model yolo11s
 
@@ -177,7 +177,7 @@ def main():
     parser.add_argument('--batch',      type=int,   default=8,
                         help='batch size，显存不足时改为 4')
     parser.add_argument('--imgsz',      type=int,   default=640)
-    parser.add_argument('--model',      default='yolov8n',
+    parser.add_argument('--model',      default='yolo11n',
                         choices=['yolo11n', 'yolo11s', 'yolo11m'],
                         help='n=最快, s=均衡(推荐), m=最精准但慢')
     parser.add_argument('--model_path', default='',

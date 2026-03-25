@@ -165,6 +165,21 @@ def aug_blur(img, labels, ksize=None):
     return img_b, labels
 
 
+def aug_shadow(img, labels):
+    """图片中添加阴影"""
+    H, W = img.shape[:2]
+    # 随机半边压暗
+    x_split = random.randint(W//4, 3*W//4)
+    factor = random.uniform(0.4, 0.7)
+    side = random.choice(['left', 'right'])
+    img = img.copy().astype(np.float32)
+    if side == 'left':
+        img[:, :x_split] *= factor
+    else:
+        img[:, x_split:] *= factor
+    return np.clip(img, 0, 255).astype(np.uint8), labels
+
+
 def aug_scale_crop(img, labels, scale_range=(0.7, 1.0)):
     """随机缩放后居中裁回原尺寸"""
     H, W = img.shape[:2]
@@ -239,6 +254,54 @@ def aug_perspective(img, labels, distort=0.05):
     return img_p, new_labels
 
 
+def aug_random_background(img, labels):
+    """把白色背景换成随机颜色/纹理，消除背景依赖"""
+    H, W = img.shape[:2]
+    # 检测接近白色的像素
+    white_mask = (img[:,:,0] > 200) & \
+                 (img[:,:,1] > 200) & \
+                 (img[:,:,2] > 200)
+    
+    # 随机选择背景类型
+    bg_type = random.choice(['color', 'noise', 'gradient'])
+    
+    if bg_type == 'color':
+        # 纯色背景
+        color = [random.randint(100,240) for _ in range(3)]
+        bg = np.full_like(img, color)
+    elif bg_type == 'noise':
+        # 噪声背景
+        bg = np.random.randint(150, 230, img.shape, dtype=np.uint8)
+    else:
+        # 渐变背景
+        bg = np.zeros_like(img)
+        for c in range(3):
+            grad = np.linspace(random.randint(150,200),
+                               random.randint(200,240), W)
+            bg[:,:,c] = np.tile(grad, (H,1)).astype(np.uint8)
+    
+    result = img.copy()
+    result[white_mask] = bg[white_mask]
+    return result, labels
+
+
+def aug_erase_markers(img, labels):
+    """用背景色覆盖彩色标记框，避免模型依赖标记框定位"""
+    img = img.copy()
+    # 检测红色区域 (BGR)
+    red_mask = (img[:,:,2] > 150) & \
+               (img[:,:,0] < 80) & \
+               (img[:,:,1] < 80)
+    # 检测蓝色区域
+    blue_mask = (img[:,:,0] > 150) & \
+                (img[:,:,2] < 80)
+    # 用白色/浅灰覆盖
+    fill = random.randint(200, 240)
+    img[red_mask]  = fill
+    img[blue_mask] = fill
+    return img, labels
+
+
 # 增强pipeline 
 
 # 每个增强操作: (函数, kwargs, 概率)
@@ -246,13 +309,15 @@ AUG_PIPELINE = [
     (aug_rotate,             {},                           1.0),   # 必做，俯视图收益最大
     (aug_flip,               {'mode': 'h'},                0.5),
     (aug_flip,               {'mode': 'v'},                0.5),
-    (aug_brightness_contrast,{},                           0.8),
-    (aug_hsv,                {},                           0.6),
-    (aug_noise,              {},                           0.4),
+    (aug_brightness_contrast,{'bright_delta': 40,           
+                              'contrast_range': (0.5,1.5)},0.8),
+    (aug_noise,              {'sigma': 15},                0.4),
+    (aug_shadow,             {},                           0.5),
     (aug_blur,               {},                           0.3),
     (aug_scale_crop,         {},                           0.5),
     (aug_cutout,             {},                           0.4),
-    (aug_perspective,        {'distort': 0.04},            0.3),
+    (aug_perspective,        {'distort': 0.04},            0.2),
+    (aug_erase_markers,      {},                           0.3),
 ]
 
 
