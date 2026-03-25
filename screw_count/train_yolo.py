@@ -26,7 +26,7 @@ def create_dataset_yaml(data_dir, output_path='screws.yaml'):
         'train': 'train/images',
         'val':   'val/images',
 
-        # 5种螺丝类别（按作业要求顺序）
+        # 5种螺丝类别
         'nc': 5,
         'names': ['Type_1', 'Type_2', 'Type_3', 'Type_4', 'Type_5'],
     }
