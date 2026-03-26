@@ -1,12 +1,3 @@
-"""
-YOLO 训练脚本 - 螺丝计数任务
-用法:
-    python train_yolo.py --data_dir ./augmented --epochs 150 --model yolo11s
-
-依赖:
-    pip install ultralytics opencv-python albumentations
-"""
-
 import argparse
 import os
 import shutil

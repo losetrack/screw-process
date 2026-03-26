@@ -1,11 +1,3 @@
-"""
-run.py - 作业提交入口
-用法:
-    python run.py --data_dir /path/to/test_images \
-                  --output_path ./result.npy \
-                  --output_time_path ./time.txt
-"""
-
 import argparse
 import sys
 import time
@@ -29,7 +21,7 @@ def load_model(weights_path):
     return model
 
 
-def predict_image(model, img_path, conf_thresh=0.25, iou_thresh=0.45, num_classes=5):
+def predict_image(model, img_path, conf_thresh=0.25, iou_thresh=0.45, imgsz=1280, num_classes=5):
     """
     对单张图推理，返回 5 个类别的计数列表。
     """
@@ -37,7 +29,7 @@ def predict_image(model, img_path, conf_thresh=0.25, iou_thresh=0.45, num_classe
         source    = str(img_path),
         conf      = conf_thresh,
         iou       = iou_thresh,
-        imgsz     = 640,
+        imgsz     = imgsz,
         verbose   = False,
         device    = _get_device(),
     )
@@ -69,9 +61,10 @@ def main():
     parser.add_argument('--output_time_path',default='./time.txt',
                         help='输出时间记录文件路径')
     parser.add_argument('--weights',         default='weights/best.pt',
-                        help='YOLOv8 权重文件路径')
+                        help='YOLO 权重文件路径')
     parser.add_argument('--conf',  type=float, default=0.25, help='置信度阈值')
-    parser.add_argument('--iou',   type=float, default=0.45, help='NMS IoU 阈值')
+    parser.add_argument('--iou',   type=float, default=0.30, help='NMS IoU 阈值')
+    parser.add_argument('--imgsz', type=int,   default=1280, help='推理图像尺寸')
     args = parser.parse_args()
 
     # 检查输入目录 
@@ -107,7 +100,8 @@ def main():
         t_img = time.time()
         counts = predict_image(model, img_path,
                                conf_thresh=args.conf,
-                               iou_thresh=args.iou)
+                               iou_thresh=args.iou,
+                               imgsz=args.imgsz)
         elapsed_img = time.time() - t_img
 
         key = img_path.stem          # 不带后缀的文件名
@@ -126,13 +120,11 @@ def main():
     time_path.write_text(str(total_time))
 
     # 打印汇总
-    print(f"\n{'='*50}")
     print(f"Total images processed : {len(img_paths)}")
     print(f"Total processing time  : {total_time:.2f}s")
     print(f"Average per image      : {total_time/len(img_paths):.2f}s")
     print(f"Result saved to        : {output_path}")
     print(f"Time saved to          : {time_path}")
-    print(f"{'='*50}")
 
     # 快速验证格式
     loaded = np.load(str(output_path), allow_pickle=True).item()

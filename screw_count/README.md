@@ -64,6 +64,7 @@ python run.py \
 - `--weights`：默认 `weights/best.pt`
 - `--conf`：默认 `0.25`
 - `--iou`：默认 `0.45`
+- `--imgz`: 默认`1280`
 
 ### 4.2 可视化推理结果（可选）
 

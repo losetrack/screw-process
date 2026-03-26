@@ -1,10 +1,3 @@
-"""
-predict_visualize.py - 批量预测并导出可视化结果
-
-用法:
-    python predict_visualize.py --data_dir ./data/images --weights ./weights/best.pt --output_dir ./vis
-"""
-
 import argparse
 import sys
 from pathlib import Path
@@ -38,8 +31,8 @@ def main():
     parser.add_argument("--weights", default="weights/best.pt", help="模型权重路径")
     parser.add_argument("--output_dir", default="./vis", help="可视化结果输出目录")
     parser.add_argument("--conf", type=float, default=0.25, help="置信度阈值")
-    parser.add_argument("--iou", type=float, default=0.45, help="NMS IoU 阈值")
-    parser.add_argument("--imgsz", type=int, default=640, help="推理尺寸")
+    parser.add_argument("--iou", type=float, default=0.30, help="NMS IoU 阈值")
+    parser.add_argument("--imgsz", type=int, default=1280, help="推理尺寸")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)

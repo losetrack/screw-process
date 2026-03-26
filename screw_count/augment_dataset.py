@@ -1,19 +1,3 @@
-"""
-数据增强脚本 - 螺丝计数任务
-用法:
-    python augment_dataset.py --img_dir ./images --label_dir ./labels \
-                               --output_dir ./augmented --aug_per_image 50
-
-目录结构要求 (YOLO格式):
-    images/   *.jpg / *.png
-    labels/   *.txt  (每行: class cx cy w h, 归一化)
-
-输出:
-    augmented/
-        images/   原图 + 增强图
-        labels/   对应标注
-"""
-
 import argparse
 import re
 import random
@@ -130,8 +114,7 @@ def aug_flip(img, labels, mode='h'):
     return img_f, new_labels
 
 
-def aug_brightness_contrast(img, labels,
-                              bright_delta=40, contrast_range=(0.7, 1.3)):
+def aug_brightness_contrast(img, labels, bright_delta=40, contrast_range=(0.7, 1.3)):
     """亮度+对比度随机扰动（模拟光照变化）"""
     img_f = img.astype(np.float32)
     alpha = random.uniform(*contrast_range)
@@ -294,6 +277,7 @@ def aug_erase_markers(img, labels):
                (img[:,:,1] < 80)
     # 检测蓝色区域
     blue_mask = (img[:,:,0] > 150) & \
+                (img[:,:,1] < 100) & \
                 (img[:,:,2] < 80)
     # 用白色/浅灰覆盖
     fill = random.randint(200, 240)
@@ -332,24 +316,34 @@ def apply_pipeline(img, labels):
     return img, labels
 
 
-# 主流程 
-def augment_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
+# 主流程
+def build_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
+    """
+    先划分 train/val，再只对 train 做增强。
+    原图全部进 val（干净数据评估），增强图全部进 train。
+    """
     random.seed(seed)
     np.random.seed(seed)
 
     img_dir   = Path(img_dir)
     label_dir = Path(label_dir)
-    out_imgs  = Path(output_dir) / 'images'
-    out_lbls  = Path(output_dir) / 'labels'
-    out_imgs.mkdir(parents=True, exist_ok=True)
-    out_lbls.mkdir(parents=True, exist_ok=True)
+    out       = Path(output_dir)
+
+    # 清理旧数据
+    for split in ['train', 'val']:
+        split_dir = out / split
+        if split_dir.exists():
+            shutil.rmtree(split_dir)
+        (split_dir / 'images').mkdir(parents=True, exist_ok=True)
+        (split_dir / 'labels').mkdir(parents=True, exist_ok=True)
 
     img_paths = sorted(list(img_dir.glob('*.jpg')) + list(img_dir.glob('*.png')))
     if not img_paths:
         raise FileNotFoundError(f"No images found in {img_dir}")
 
     print(f"Found {len(img_paths)} original images")
-    total = 0
+    n_train = 0
+    n_val = 0
 
     for img_path in img_paths:
         img = cv2.imread(str(img_path))
@@ -359,101 +353,32 @@ def augment_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
 
         label_path = label_dir / (img_path.stem + '.txt')
         labels = load_yolo_labels(label_path)
-
-        # 1. 复制原图
         stem = img_path.stem
-        shutil.copy(img_path, out_imgs / img_path.name)
-        if labels:
-            shutil.copy(label_path, out_lbls / label_path.name)
-        total += 1
 
-        # 2. 生成增强图
+        # 原图 → val（干净数据用于验证）
+        shutil.copy(img_path, out / 'val' / 'images' / img_path.name)
+        if label_path.exists():
+            shutil.copy(label_path, out / 'val' / 'labels' / label_path.name)
+        n_val += 1
+
+        # 增强图 → train
         for i in range(aug_per_image):
             aug_img, aug_labels = apply_pipeline(img.copy(), [lb[:] for lb in labels])
             out_name = f"{stem}_aug{i:04d}"
-            cv2.imwrite(str(out_imgs / f"{out_name}.jpg"), aug_img,
+            cv2.imwrite(str(out / 'train' / 'images' / f"{out_name}.jpg"), aug_img,
                         [cv2.IMWRITE_JPEG_QUALITY, 95])
-            save_yolo_labels(out_lbls / f"{out_name}.txt", aug_labels)
-            total += 1
+            save_yolo_labels(out / 'train' / 'labels' / f"{out_name}.txt", aug_labels)
+            n_train += 1
 
-        print(f"  {img_path.name}: +{aug_per_image} augmented → {aug_per_image + 1} total")
+        print(f"  {img_path.name}: val=1(原图), train=+{aug_per_image}(增强)")
 
-    print(f"\nDone! Total images: {total}")
-    print(f"Output: {output_dir}")
-    return total
-
-
-def split_dataset(output_dir, val_ratio=0.15, seed=42):
-    """将增强后的数据集按原图分组切分成 train/val，避免数据泄漏"""
-    if not 0 <= val_ratio <= 1:
-        raise ValueError(f"val_ratio must be in [0, 1], got {val_ratio}")
-
-    random.seed(seed)
-    out = Path(output_dir)
-    img_dir = out / 'images'
-    label_dir = out / 'labels'
-
-    img_paths = sorted([p for p in img_dir.iterdir()
-                        if p.is_file() and p.suffix.lower() in {'.jpg', '.jpeg', '.png'}])
-    if not img_paths:
-        raise FileNotFoundError(f"No images found in {img_dir}")
-
-    aug_stem_pattern = re.compile(r'^(?P<base>.+)_aug\d+$')
-
-    def group_stem(stem):
-        m = aug_stem_pattern.match(stem)
-        return m.group('base') if m else stem
-
-    # 将同一原图及其增强图放入同一组，切分时整组进入 train 或 val
-    groups = {}
-    for p in img_paths:
-        base = group_stem(p.stem)
-        groups.setdefault(base, []).append(p)
-
-    group_keys = list(groups.keys())
-    random.shuffle(group_keys)
-
-    n_groups = len(group_keys)
-    n_val = int(n_groups * val_ratio)
-    if 0 < val_ratio < 1 and n_groups > 1:
-        n_val = max(1, min(n_groups - 1, n_val))
-    else:
-        n_val = min(max(n_val, 0), n_groups)
-
-    val_group_keys = set(group_keys[:n_val])
-
-    # 清理旧切分结果，避免重复运行叠加脏数据
-    for split in ['train', 'val']:
-        split_dir = out / split
-        if split_dir.exists():
-            shutil.rmtree(split_dir)
-        (split_dir / 'images').mkdir(parents=True, exist_ok=True)
-        (split_dir / 'labels').mkdir(parents=True, exist_ok=True)
-
-    def move_to(p, split):
-        lbl = label_dir / (p.stem + '.txt')
-        shutil.copy(p, out / split / 'images' / p.name)
-        if lbl.exists():
-            shutil.copy(lbl, out / split / 'labels' / lbl.name)
-
-    n_train = 0
-    n_val_imgs = 0
-    for base, group_images in groups.items():
-        split = 'val' if base in val_group_keys else 'train'
-        for p in group_images:
-            move_to(p, split)
-            if split == 'train':
-                n_train += 1
-            else:
-                n_val_imgs += 1
-
-    print(f"\nSplit: train={n_train}, val={n_val_imgs}")
-    print(f"  group split: total_groups={n_groups}, val_groups={n_val}")
-    print(f"  train/images  →  {out}/train/images")
-    print(f"  val/images    →  {out}/val/images")
+    print(f"\nDone! train={n_train}, val={n_val}")
+    print(f"  train/images → {out / 'train' / 'images'}")
+    print(f"  val/images   → {out / 'val' / 'images'}")
+    return n_train, n_val
 
 
-# CLI 
+# CLI
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='螺丝数据集增强工具')
@@ -461,10 +386,8 @@ if __name__ == '__main__':
     parser.add_argument('--label_dir',     default='./labels',    help='YOLO标注目录')
     parser.add_argument('--output_dir',    default='./augmented', help='输出目录')
     parser.add_argument('--aug_per_image', type=int, default=50,  help='每张图增强几倍')
-    parser.add_argument('--val_ratio',     type=float, default=0.15, help='验证集比例(用原图)')
     parser.add_argument('--seed',          type=int, default=42)
     args = parser.parse_args()
 
-    augment_dataset(args.img_dir, args.label_dir, args.output_dir,
-                    args.aug_per_image, args.seed)
-    split_dataset(args.output_dir, args.val_ratio, args.seed)
+    build_dataset(args.img_dir, args.label_dir, args.output_dir,
+                  args.aug_per_image, args.seed)
