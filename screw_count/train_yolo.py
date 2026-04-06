@@ -171,8 +171,8 @@ def main():
     parser.add_argument('--model',      default='yolo11n',
                         choices=['yolo11n', 'yolo11s', 'yolo11m'],
                         help='n=最快, s=均衡(推荐), m=最精准但慢')
-    parser.add_argument('--model_path', default='',
-                        help='本地权重路径(如 ./weights/yolo11s.pt)，设置后优先使用')
+    parser.add_argument('--model_path', default='./weights/yolo11s.pt',
+                        help='本地权重路径，设置后优先使用')
     parser.add_argument('--freeze',     type=int,   default=10,
                         help='冻结前N层(迁移学习)，数据少用10，数据多用0')
     parser.add_argument('--output_dir', default='./runs',

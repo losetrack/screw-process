@@ -301,7 +301,7 @@ AUG_PIPELINE = [
     (aug_scale_crop,         {},                           0.5),
     (aug_cutout,             {},                           0.4),
     (aug_perspective,        {'distort': 0.04},            0.2),
-    (aug_erase_markers,      {},                           0.3),
+    (aug_erase_markers,      {},                           0.5),
 ]
 
 

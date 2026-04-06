@@ -63,8 +63,8 @@ def main():
     parser.add_argument('--weights',         default='weights/best.pt',
                         help='YOLO 权重文件路径')
     parser.add_argument('--conf',  type=float, default=0.25, help='置信度阈值')
-    parser.add_argument('--iou',   type=float, default=0.30, help='NMS IoU 阈值')
-    parser.add_argument('--imgsz', type=int,   default=1280, help='推理图像尺寸')
+    parser.add_argument('--iou',   type=float, default=0.45, help='NMS IoU 阈值')
+    parser.add_argument('--imgsz', type=int,   default=640, help='推理图像尺寸')
     args = parser.parse_args()
 
     # 检查输入目录 
