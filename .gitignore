@@ -1,4 +1,5 @@
 .vscode/
+__pycache__/
 homograpy_restore/data/
 homograpy_restore/restored_images/
 screw_count/data/
