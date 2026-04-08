@@ -382,8 +382,8 @@ def build_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='螺丝数据集增强工具')
-    parser.add_argument('--img_dir',       default='./images',    help='原始图片目录')
-    parser.add_argument('--label_dir',     default='./labels',    help='YOLO标注目录')
+    parser.add_argument('--img_dir',       default='./data/images',    help='原始图片目录')
+    parser.add_argument('--label_dir',     default='./data/labels',    help='YOLO标注目录')
     parser.add_argument('--output_dir',    default='./augmented', help='输出目录')
     parser.add_argument('--aug_per_image', type=int, default=50,  help='每张图增强几倍')
     parser.add_argument('--seed',          type=int, default=42)

@@ -70,21 +70,21 @@ class SegmentationVisualizer:
         # 混合原图和掩码
         vis = cv2.addWeighted(vis, 0.6, overlay, 0.4, 0)
 
-        # 绘制边界框和标签
-        for det in detections:
-            x1, y1, x2, y2 = det['box'].astype(int)
-            class_id = det['class']
-            score = det['score']
-            color = self.colors[class_id % len(self.colors)]
+        # # 绘制边界框和标签
+        # for det in detections:
+        #     x1, y1, x2, y2 = det['box'].astype(int)
+        #     class_id = det['class']
+        #     score = det['score']
+        #     color = self.colors[class_id % len(self.colors)]
 
-            # 边界框
-            cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
+        #     # 边界框
+        #     cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
 
-            # 标签
-            label = f"Type_{class_id + 1}: {score:.2f}"
-            (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            cv2.rectangle(vis, (x1, y1 - label_h - 5), (x1 + label_w, y1), color, -1)
-            cv2.putText(vis, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        #     # 标签
+        #     label = f"Type_{class_id + 1}: {score:.2f}"
+        #     (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        #     cv2.rectangle(vis, (x1, y1 - label_h - 5), (x1 + label_w, y1), color, -1)
+        #     cv2.putText(vis, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         return vis
 

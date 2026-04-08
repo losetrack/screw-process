@@ -40,11 +40,7 @@ class SegmentationPipeline:
         ----------
         detector : ScrewDetector
             检测器实例
-<<<<<<< HEAD
         segmentor : SamSegmentor/ThresholdSegmentor
-=======
-        segmentor : ScrewSegmentor
->>>>>>> 24b7c5291776dd07e724d0ac020de01bb15f5423
             分割器实例
         visualizer : SegmentationVisualizer
             可视化器实例

@@ -161,7 +161,7 @@ def print_dataset_stats(data_dir):
 # ──────────────────────── 主流程 ─────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description='YOLOv8 螺丝检测训练脚本')
+    parser = argparse.ArgumentParser(description='YOLO 螺丝检测训练脚本')
     parser.add_argument('--data_dir',   default='./augmented',
                         help='augment_dataset.py 的输出目录（包含 train/val 子目录）')
     parser.add_argument('--epochs',     type=int,   default=150)
@@ -169,7 +169,7 @@ def main():
                         help='batch size，显存不足时改为 4')
     parser.add_argument('--imgsz',      type=int,   default=640)
     parser.add_argument('--model',      default='yolo11n',
-                        choices=['yolo11n', 'yolo11s', 'yolo11m'],
+                        choices=['yolo11n', 'yolo11s', 'yolov8m'],
                         help='n=最快, s=均衡(推荐), m=最精准但慢')
     parser.add_argument('--model_path', default='./weights/yolo11s.pt',
                         help='本地权重路径，设置后优先使用')
