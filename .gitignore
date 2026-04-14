@@ -2,6 +2,7 @@
 __pycache__/
 CLAUDE.md
 *.pt
+*.MOV
 homograpy_restore/data/
 homograpy_restore/restored_images/
 screw_count/data/
