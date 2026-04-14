@@ -1,7 +1,7 @@
 """
 ByteTrack-based multi-object tracker for screws
 """
-from boxmot import BYTETracker
+from boxmot import ByteTrack
 import numpy as np
 
 
@@ -16,14 +16,14 @@ class ScrewTracker:
             match_thresh: Matching threshold for data association
             frame_rate: Video frame rate
         """
-        self.tracker = BYTETracker(
+        self.tracker = ByteTrack(
             track_thresh=track_thresh,
             track_buffer=track_buffer,
             match_thresh=match_thresh,
             frame_rate=frame_rate
         )
 
-    def update(self, detections):
+    def update(self, detections, frame):
         """
         Update tracker with new detections
 
@@ -34,27 +34,25 @@ class ScrewTracker:
             List of tracks: [{'box': [x1,y1,x2,y2], 'class': int, 'track_id': int}, ...]
         """
         if not detections:
-            # Update with empty detections to handle lost tracks
-            self.tracker.update(np.empty((0, 6)), None)
+            empty = np.zeros((0, 6), dtype=np.float32)
+            self.tracker.update(empty, frame)
             return []
 
-        # Convert to [x1,y1,x2,y2,score,class] format
         dets = np.array([
             [d['box'][0], d['box'][1], d['box'][2], d['box'][3], d['score'], d['class']]
             for d in detections
-        ])
+        ], dtype=np.float32)
 
-        # Update tracker: returns [x1,y1,x2,y2,track_id,class,...]
-        tracks = self.tracker.update(dets, None)
+        tracks = self.tracker.update(dets, frame)
 
-        # Convert to output format
         results = []
-        if len(tracks) > 0:
-            for track in tracks:
-                results.append({
-                    'box': track[:4],
-                    'class': int(track[5]),
-                    'track_id': int(track[4])
-                })
+        for track in tracks:
+            x1, y1, x2, y2, track_id, conf, cls, det_ind = track
+
+            results.append({
+                'box': [x1, y1, x2, y2],
+                'class': int(cls),
+                'track_id': int(track_id)
+            })
 
         return results

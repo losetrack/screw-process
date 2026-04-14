@@ -2,6 +2,7 @@
 __pycache__/
 CLAUDE.md
 *.pt
+*.MOV
 homograpy_restore/data/
 homograpy_restore/restored_images/
 screw_count/data/
@@ -14,3 +15,4 @@ screw_count/test/
 screw_segment/data/
 screw_segment/output/
 screw_segment/weights/
+screw_video/mask_folder/

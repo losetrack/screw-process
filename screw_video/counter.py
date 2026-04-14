@@ -12,7 +12,7 @@ class ScrewCounter:
             num_classes: Number of screw classes (default: 5)
         """
         self.num_classes = num_classes
-        self.track_history = {}  # {track_id: class_id}
+        self.track_history = {}  # {track_id: {class_id: votes}}
 
     def update(self, tracks):
         """
@@ -23,9 +23,12 @@ class ScrewCounter:
         """
         for track in tracks:
             tid = track['track_id']
+            class_id = track['class']
+
             if tid not in self.track_history:
-                # Record the class of this track when first seen
-                self.track_history[tid] = track['class']
+                self.track_history[tid] = {}
+
+            self.track_history[tid][class_id] = self.track_history[tid].get(class_id, 0) + 1
 
     def get_counts(self):
         """
@@ -35,7 +38,8 @@ class ScrewCounter:
             List of counts [Type_1, Type_2, Type_3, Type_4, Type_5]
         """
         counts = [0] * self.num_classes
-        for class_id in self.track_history.values():
+        for class_votes in self.track_history.values():
+            class_id = max(class_votes, key=class_votes.get)
             if 0 <= class_id < self.num_classes:
                 counts[class_id] += 1
         return counts

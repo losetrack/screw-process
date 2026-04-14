@@ -50,6 +50,7 @@ def process_video(video_path, detector, output_mask_dir):
     mask_frame = None
     mask_tracks = None
     middle_frame_idx = total_frames // 2
+    best_mask_distance = None
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -60,15 +61,18 @@ def process_video(video_path, detector, output_mask_dir):
         detections = detector.detect(frame)
 
         # Update tracker
-        tracks = tracker.update(detections)
+        tracks = tracker.update(detections, frame)
 
         # Update counter
         counter.update(tracks)
 
-        # Save middle frame for mask visualization
-        if frame_idx == middle_frame_idx and len(tracks) > 0:
-            mask_frame = frame.copy()
-            mask_tracks = tracks
+        # Save the tracked frame closest to the middle for mask visualization
+        if len(tracks) > 0:
+            distance_to_middle = abs(frame_idx - middle_frame_idx)
+            if best_mask_distance is None or distance_to_middle < best_mask_distance:
+                best_mask_distance = distance_to_middle
+                mask_frame = frame.copy()
+                mask_tracks = tracks
 
         frame_idx += 1
 
@@ -95,17 +99,17 @@ def main():
     parser = argparse.ArgumentParser(description='Video screw counting with YOLO + ByteTrack')
     parser.add_argument('--data_dir', type=str, required=True,
                         help='Directory containing test videos')
-    parser.add_argument('--output_path', type=str, required=True,
+    parser.add_argument('--output_path', type=str, default='./result.npy',
                         help='Output path for result.npy')
-    parser.add_argument('--output_time_path', type=str, required=True,
+    parser.add_argument('--output_time_path', type=str, default='./time.txt',
                         help='Output path for time.txt')
-    parser.add_argument('--mask_output_path', type=str, required=True,
+    parser.add_argument('--mask_output_path', type=str, default='./mask_folder/',
                         help='Output directory for mask images')
     parser.add_argument('--weights', type=str, default='weights/best.pt',
                         help='Path to YOLO weights')
     parser.add_argument('--conf', type=float, default=0.25,
                         help='Confidence threshold')
-    parser.add_argument('--iou', type=float, default=0.45,
+    parser.add_argument('--iou', type=float, default=0.50,
                         help='IoU threshold for NMS')
     parser.add_argument('--imgsz', type=int, default=640,
                         help='Input image size')
