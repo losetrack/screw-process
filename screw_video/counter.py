@@ -1,5 +1,5 @@
 """
-Screw counter based on track IDs
+Screw counter based on track IDs with majority voting
 """
 
 
@@ -32,7 +32,7 @@ class ScrewCounter:
 
     def get_counts(self):
         """
-        Get final counts for all classes
+        Get final counts for all classes using majority voting
 
         Returns:
             List of counts [Type_1, Type_2, Type_3, Type_4, Type_5]
@@ -42,6 +42,26 @@ class ScrewCounter:
             class_id = max(class_votes, key=class_votes.get)
             if 0 <= class_id < self.num_classes:
                 counts[class_id] += 1
+        return counts
+
+    def get_counts_with_voting(self, tracker):
+        """
+        Get final counts using tracker's class history (方案1: 轨迹级类别投票)
+
+        Args:
+            tracker: ScrewTracker instance with track_class_history
+
+        Returns:
+            List of counts [Type_1, Type_2, Type_3, Type_4, Type_5]
+        """
+        counts = [0] * self.num_classes
+
+        # Use tracker's class history for more accurate voting
+        for track_id in self.track_history.keys():
+            final_class = tracker.get_track_final_class(track_id)
+            if final_class is not None and 0 <= final_class < self.num_classes:
+                counts[final_class] += 1
+
         return counts
 
     def reset(self):

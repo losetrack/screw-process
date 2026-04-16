@@ -16,3 +16,4 @@ screw_segment/data/
 screw_segment/output/
 screw_segment/weights/
 screw_video/mask_folder/
+screw_video/vis_videos/

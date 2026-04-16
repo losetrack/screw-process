@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 
 import cv2
-import numpy as np
 
 from detector import ScrewDetector
 from tracker import ScrewTracker
@@ -60,13 +59,22 @@ def draw_status_panel(frame, frame_idx, det_count, track_count, counts):
         y += 26
 
 
-def process_video(video_path, detector, output_video_path, display=False, max_frames=-1, wait_ms=1):
+def process_video(
+    video_path,
+    detector,
+    output_video_path,
+    display=False,
+    max_frames=-1,
+    wait_ms=1,
+    sample_interval=1,
+    save_output_video=True,
+):
     """Run detection + tracking + counting and export visualization video."""
     print(f"Processing {video_path.name}...")
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         print(f"  Error: Cannot open video {video_path}")
-        return [0, 0, 0, 0, 0], 0
+        return [0, 0, 0, 0, 0], 0, 0
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -75,64 +83,86 @@ def process_video(video_path, detector, output_video_path, display=False, max_fr
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    print(f"  Total frames: {total_frames}, FPS: {fps:.2f}, Size: {width}x{height}")
+    sampled_fps = max(1.0, fps / sample_interval)
+    print(
+        f"  Total frames: {total_frames}, FPS: {fps:.2f}, "
+        f"Sample interval: {sample_interval}, Size: {width}x{height}"
+    )
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width, height))
+    writer = None
+    if save_output_video:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(output_video_path), fourcc, sampled_fps, (width, height))
 
     tracker = ScrewTracker(
-        track_thresh=0.25,
+        track_thresh=0.3,
         track_buffer=30,
-        match_thresh=0.8,
-        frame_rate=int(fps),
+        match_thresh=0.9,
+        frame_rate=int(sampled_fps) if sampled_fps > 0 else 30,
     )
     counter = ScrewCounter()
 
-    frame_idx = 0
+    source_frame_idx = 0
+    processed_frame_idx = 0
+    expected_total = min(total_frames, max_frames) if max_frames > 0 else total_frames
+    expected_kept = (expected_total + sample_interval - 1) // sample_interval if expected_total > 0 else 0
+
     while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        detections = detector.detect(frame)
-        tracks = tracker.update(detections, frame)
-        counter.update(tracks)
-
-        vis_frame = draw_tracks(frame, tracks)
-        draw_status_panel(
-            vis_frame,
-            frame_idx=frame_idx,
-            det_count=len(detections),
-            track_count=len(tracks),
-            counts=counter.get_counts(),
-        )
-
-        writer.write(vis_frame)
-
-        if display:
-            cv2.imshow("Screw Tracking Visualization", vis_frame)
-            key = cv2.waitKey(wait_ms) & 0xFF
-            if key == ord("q"):
-                print("  Stopped by user")
-                break
-
-        frame_idx += 1
-        if frame_idx % 30 == 0:
-            print(f"  Processed {frame_idx}/{total_frames} frames...")
-
-        if max_frames > 0 and frame_idx >= max_frames:
+        if max_frames > 0 and source_frame_idx >= max_frames:
             print(f"  Reached max_frames={max_frames}")
             break
 
+        grabbed = cap.grab()
+        if not grabbed:
+            break
+
+        if source_frame_idx % sample_interval == 0:
+            ret, frame = cap.retrieve()
+            if not ret:
+                break
+
+            detections = detector.detect(frame)
+            tracks = tracker.update(detections, frame)
+            counter.update(tracks)
+
+            vis_frame = draw_tracks(frame, tracks)
+            draw_status_panel(
+                vis_frame,
+                frame_idx=source_frame_idx,
+                det_count=len(detections),
+                track_count=len(tracks),
+                counts=counter.get_counts(),
+            )
+
+            if writer is not None:
+                writer.write(vis_frame)
+
+            if display:
+                cv2.imshow("Screw Tracking Visualization", vis_frame)
+                key = cv2.waitKey(wait_ms) & 0xFF
+                if key == ord("q"):
+                    print("  Stopped by user")
+                    break
+
+            processed_frame_idx += 1
+            if processed_frame_idx % 30 == 0:
+                print(f"  Processed {processed_frame_idx}/{expected_kept} sampled frames...")
+
+        source_frame_idx += 1
+
     cap.release()
-    writer.release()
+    if writer is not None:
+        writer.release()
     if display:
         cv2.destroyAllWindows()
 
-    counts = counter.get_counts()
-    print(f"  Output video: {output_video_path}")
+    counts = counter.get_counts_with_voting(tracker)
+    if save_output_video:
+        print(f"  Output video: {output_video_path}")
+    else:
+        print("  Output video: disabled")
     print(f"  Final counts: {counts}")
-    return counts, frame_idx
+    return counts, processed_frame_idx, source_frame_idx
 
 
 def main():
@@ -147,17 +177,13 @@ def main():
     parser.add_argument("--max_frames", type=int, default=-1, help="Limit frames for quick debugging; -1 for full video")
     parser.add_argument("--display", action="store_true", help="Show live visualization window; press q to stop")
     parser.add_argument("--wait_ms", type=int, default=1, help="cv2.waitKey delay in milliseconds")
+    parser.add_argument("--process_sampled", action="store_true", help="Run detection/tracking on sampled frames directly from source video")
+    parser.add_argument("--sample_interval", type=int, default=1, help="When --process_sampled is enabled, keep one frame every N frames")
+    parser.add_argument("--no_save_video", action="store_true", help="Disable writing visualization video to speed up testing")
     args = parser.parse_args()
 
-    detector = ScrewDetector(
-        weights_path=args.weights,
-        conf=args.conf,
-        iou=args.iou,
-        imgsz=args.imgsz,
-    )
-
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if args.sample_interval < 1:
+        parser.error("--sample_interval must be >= 1")
 
     if args.video_path:
         video_files = [Path(args.video_path)]
@@ -170,22 +196,44 @@ def main():
 
     print(f"Found {len(video_files)} video(s)")
 
+    detector = ScrewDetector(
+        weights_path=args.weights,
+        conf=args.conf,
+        iou=args.iou,
+        imgsz=args.imgsz,
+    )
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     start = time.time()
     results = {}
     frame_stats = {}
 
     for video_path in video_files:
         out_video = output_dir / f"{video_path.stem}_vis.mp4"
-        counts, processed_frames = process_video(
+
+        if args.process_sampled:
+            out_video = output_dir / f"{video_path.stem}_sampled_vis.mp4"
+
+        if args.no_save_video:
+            out_video = None
+
+        counts, processed_frames, source_frames = process_video(
             video_path=video_path,
             detector=detector,
             output_video_path=out_video,
             display=args.display,
             max_frames=args.max_frames,
             wait_ms=args.wait_ms,
+            sample_interval=args.sample_interval if args.process_sampled else 1,
+            save_output_video=not args.no_save_video,
         )
         results[video_path.stem] = counts
-        frame_stats[video_path.stem] = processed_frames
+        frame_stats[video_path.stem] = {
+            "source_frames": source_frames,
+            "processed_frames": processed_frames,
+        }
 
     total_time = time.time() - start
 

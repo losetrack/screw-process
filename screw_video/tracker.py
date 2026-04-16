@@ -22,6 +22,8 @@ class ScrewTracker:
             match_thresh=match_thresh,
             frame_rate=frame_rate
         )
+        # Track class history for voting
+        self.track_class_history = {}  # {track_id: [class_id, class_id, ...]}
 
     def update(self, detections, frame):
         """
@@ -48,11 +50,39 @@ class ScrewTracker:
         results = []
         for track in tracks:
             x1, y1, x2, y2, track_id, conf, cls, det_ind = track
+            track_id = int(track_id)
+            class_id = int(cls)
+
+            # Record class history for this track
+            if track_id not in self.track_class_history:
+                self.track_class_history[track_id] = []
+            self.track_class_history[track_id].append(class_id)
 
             results.append({
                 'box': [x1, y1, x2, y2],
-                'class': int(cls),
-                'track_id': int(track_id)
+                'class': class_id,
+                'track_id': track_id
             })
 
         return results
+
+    def get_track_final_class(self, track_id):
+        """
+        Get the final class for a track using majority voting
+
+        Args:
+            track_id: Track ID
+
+        Returns:
+            Most common class_id in the track's history, or None if not found
+        """
+        if track_id not in self.track_class_history:
+            return None
+
+        from collections import Counter
+        class_history = self.track_class_history[track_id]
+        if not class_history:
+            return None
+
+        # Return the most common class
+        return Counter(class_history).most_common(1)[0][0]

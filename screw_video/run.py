@@ -13,7 +13,7 @@ from counter import ScrewCounter
 from visualizer import draw_tracks
 
 
-def process_video(video_path, detector, output_mask_dir):
+def process_video(video_path, detector, output_mask_dir, track_thresh, track_buffer, match_thresh):
     """
     Process a single video: detect, track, count screws
 
@@ -21,6 +21,9 @@ def process_video(video_path, detector, output_mask_dir):
         video_path: Path to video file
         detector: ScrewDetector instance
         output_mask_dir: Directory to save mask visualization
+        track_thresh: ByteTrack detection threshold
+        track_buffer: ByteTrack buffer frames
+        match_thresh: ByteTrack IOU threshold
 
     Returns:
         List of counts [Type_1, Type_2, Type_3, Type_4, Type_5]
@@ -37,11 +40,11 @@ def process_video(video_path, detector, output_mask_dir):
     fps = cap.get(cv2.CAP_PROP_FPS)
     print(f"  Total frames: {total_frames}, FPS: {fps:.2f}")
 
-    # Initialize tracker and counter
+    # Initialize tracker and counter with optimized parameters
     tracker = ScrewTracker(
-        track_thresh=0.25,
-        track_buffer=30,
-        match_thresh=0.8,
+        track_thresh=track_thresh,
+        track_buffer=track_buffer,
+        match_thresh=match_thresh,
         frame_rate=int(fps) if fps > 0 else 30
     )
     counter = ScrewCounter()
@@ -88,8 +91,8 @@ def process_video(video_path, detector, output_mask_dir):
         cv2.imwrite(str(mask_path), mask_img)
         print(f"  Saved mask to {mask_path}")
 
-    # Get final counts
-    counts = counter.get_counts()
+    # Get final counts using majority voting from tracker
+    counts = counter.get_counts_with_voting(tracker)
     print(f"  Counts: {counts}")
 
     return counts
@@ -113,6 +116,12 @@ def main():
                         help='IoU threshold for NMS')
     parser.add_argument('--imgsz', type=int, default=640,
                         help='Input image size')
+    parser.add_argument('--track_thresh', type=float, default=0.35,
+                        help='ByteTrack: detection confidence threshold')
+    parser.add_argument('--track_buffer', type=int, default=45,
+                        help='ByteTrack: number of frames to keep lost tracks')
+    parser.add_argument('--match_thresh', type=float, default=0.85,
+                        help='ByteTrack: IOU matching threshold')
     args = parser.parse_args()
 
     # Initialize detector
@@ -146,7 +155,8 @@ def main():
     results = {}
 
     for video_path in sorted(video_files):
-        counts = process_video(video_path, detector, output_mask_dir)
+        counts = process_video(video_path, detector, output_mask_dir,
+                              args.track_thresh, args.track_buffer, args.match_thresh)
         results[video_path.stem] = counts
 
     total_time = time.time() - start_time
