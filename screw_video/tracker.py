@@ -4,11 +4,25 @@ ByteTrack-based multi-object tracker for screws
 from boxmot import ByteTrack
 import numpy as np
 
+from reid import OSNetReID, ReIDTrackMatcher
+
 
 class ScrewTracker:
     """Wrapper for ByteTrack multi-object tracker"""
 
-    def __init__(self, track_thresh=0.25, track_buffer=30, match_thresh=0.8, frame_rate=30):
+    def __init__(
+        self,
+        track_thresh=0.25,
+        track_buffer=30,
+        match_thresh=0.8,
+        frame_rate=30,
+        reid_weights_path=None,
+        reid_model_name="osnet_x0_25",
+        reid_match_thresh=0.75,
+        reid_max_age=90,
+        reid_device=None,
+        edge_margin=0,
+    ):
         """
         Args:
             track_thresh: Detection confidence threshold for tracking
@@ -22,8 +36,41 @@ class ScrewTracker:
             match_thresh=match_thresh,
             frame_rate=frame_rate
         )
+        self.edge_margin = edge_margin
+        self.reid_matcher = None
+        if reid_weights_path is not None:
+            reid_extractor = OSNetReID(
+                weights_path=reid_weights_path,
+                model_name=reid_model_name,
+                device=reid_device,
+            )
+            self.reid_matcher = ReIDTrackMatcher(
+                feature_extractor=reid_extractor,
+                match_thresh=reid_match_thresh,
+                max_age=reid_max_age,
+            )
         # Track class history for voting
         self.track_class_history = {}  # {track_id: [class_id, class_id, ...]}
+
+    def _filter_edge_detections(self, detections, frame_shape):
+        if self.edge_margin <= 0:
+            return detections
+
+        frame_h, frame_w = frame_shape[:2]
+        filtered = []
+        for det in detections:
+            x1, y1, x2, y2 = det['box']
+            if x1 <= self.edge_margin:
+                continue
+            if y1 <= self.edge_margin:
+                continue
+            if x2 >= frame_w - self.edge_margin:
+                continue
+            if y2 >= frame_h - self.edge_margin:
+                continue
+            filtered.append(det)
+
+        return filtered
 
     def update(self, detections, frame):
         """
@@ -35,6 +82,8 @@ class ScrewTracker:
         Returns:
             List of tracks: [{'box': [x1,y1,x2,y2], 'class': int, 'track_id': int}, ...]
         """
+        detections = self._filter_edge_detections(detections, frame.shape)
+
         if not detections:
             empty = np.zeros((0, 6), dtype=np.float32)
             self.tracker.update(empty, frame)
@@ -53,16 +102,21 @@ class ScrewTracker:
             track_id = int(track_id)
             class_id = int(cls)
 
-            # Record class history for this track
-            if track_id not in self.track_class_history:
-                self.track_class_history[track_id] = []
-            self.track_class_history[track_id].append(class_id)
-
             results.append({
                 'box': [x1, y1, x2, y2],
                 'class': class_id,
                 'track_id': track_id
             })
+
+        if self.reid_matcher is not None and results:
+            results = self.reid_matcher.update(frame, results)
+
+        for track in results:
+            track_id = track['track_id']
+            class_id = track['class']
+            if track_id not in self.track_class_history:
+                self.track_class_history[track_id] = []
+            self.track_class_history[track_id].append(class_id)
 
         return results
 

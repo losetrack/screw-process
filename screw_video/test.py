@@ -17,12 +17,25 @@ from visualizer import draw_tracks
 
 
 def find_video_files(data_dir):
-    """Collect video files with common extensions."""
-    video_extensions = ["*.mp4", "*.MP4", "*.mov", "*.MOV", "*.avi", "*.AVI"]
+    """Collect video files with common extensions (deduplicated)."""
+    video_suffixes = {".mp4", ".mov", ".avi"}
     video_files = []
-    for ext in video_extensions:
-        video_files.extend(data_dir.glob(ext))
-    return sorted(video_files)
+    seen_paths = set()
+
+    for path in sorted(data_dir.iterdir()):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in video_suffixes:
+            continue
+
+        resolved_key = str(path.resolve()).lower()
+        if resolved_key in seen_paths:
+            continue
+
+        seen_paths.add(resolved_key)
+        video_files.append(path)
+
+    return video_files
 
 
 def draw_status_panel(frame, frame_idx, det_count, track_count, counts):
@@ -41,22 +54,11 @@ def draw_status_panel(frame, frame_idx, det_count, track_count, counts):
             text,
             (12, y),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (255, 255, 255),
+            1.8,
+            (0, 0, 0),
             2,
-            cv2.LINE_AA,
         )
-        cv2.putText(
-            frame,
-            text,
-            (12, y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (30, 30, 30),
-            1,
-            cv2.LINE_AA,
-        )
-        y += 26
+        y += 50
 
 
 def process_video(
@@ -68,9 +70,16 @@ def process_video(
     wait_ms=1,
     sample_interval=1,
     save_output_video=True,
+    reid_weights_path=None,
+    reid_model_name="osnet_x0_25",
+    reid_match_thresh=0.75,
+    reid_max_age=90,
+    reid_device=None,
+    edge_margin=0,
 ):
     """Run detection + tracking + counting and export visualization video."""
     print(f"Processing {video_path.name}...")
+    
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         print(f"  Error: Cannot open video {video_path}")
@@ -95,10 +104,16 @@ def process_video(
         writer = cv2.VideoWriter(str(output_video_path), fourcc, sampled_fps, (width, height))
 
     tracker = ScrewTracker(
-        track_thresh=0.3,
+        track_thresh=0.4,
         track_buffer=30,
-        match_thresh=0.9,
+        match_thresh=0.8,
         frame_rate=int(sampled_fps) if sampled_fps > 0 else 30,
+        reid_weights_path=reid_weights_path,
+        reid_model_name=reid_model_name,
+        reid_match_thresh=reid_match_thresh,
+        reid_max_age=reid_max_age,
+        reid_device=reid_device,
+        edge_margin=edge_margin,
     )
     counter = ScrewCounter()
 
@@ -171,8 +186,8 @@ def main():
     parser.add_argument("--video_path", type=str, default=None, help="Optional single video path")
     parser.add_argument("--output_dir", type=str, default="./vis_videos", help="Directory for visualization videos")
     parser.add_argument("--weights", type=str, default="weights/best.pt", help="Path to YOLO weights")
-    parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold")
-    parser.add_argument("--iou", type=float, default=0.50, help="IoU threshold")
+    parser.add_argument("--conf", type=float, default=0.3, help="Confidence threshold")
+    parser.add_argument("--iou", type=float, default=0.55, help="IoU threshold")
     parser.add_argument("--imgsz", type=int, default=640, help="Input image size")
     parser.add_argument("--max_frames", type=int, default=-1, help="Limit frames for quick debugging; -1 for full video")
     parser.add_argument("--display", action="store_true", help="Show live visualization window; press q to stop")
@@ -180,6 +195,12 @@ def main():
     parser.add_argument("--process_sampled", action="store_true", help="Run detection/tracking on sampled frames directly from source video")
     parser.add_argument("--sample_interval", type=int, default=1, help="When --process_sampled is enabled, keep one frame every N frames")
     parser.add_argument("--no_save_video", action="store_true", help="Disable writing visualization video to speed up testing")
+    parser.add_argument("--reid_weights", type=str, default=None, help="Path to OSNet Re-ID weights; when provided, Re-ID-based ID matching is enabled")
+    parser.add_argument("--reid_model", type=str, default="osnet_x0_25", help="OSNet backbone variant for Re-ID")
+    parser.add_argument("--reid_match_thresh", type=float, default=0.75, help="Cosine similarity threshold for Re-ID ID matching")
+    parser.add_argument("--reid_max_age", type=int, default=90, help="Maximum frame gap for Re-ID matching")
+    parser.add_argument("--reid_device", type=str, default='cuda:0', help="Device for OSNet Re-ID model, e.g. cpu or cuda:0")
+    parser.add_argument("--edge_margin", type=int, default=50, help="Ignore detections whose boxes touch the image border within this many pixels")
     args = parser.parse_args()
 
     if args.sample_interval < 1:
@@ -228,6 +249,12 @@ def main():
             wait_ms=args.wait_ms,
             sample_interval=args.sample_interval if args.process_sampled else 1,
             save_output_video=not args.no_save_video,
+            reid_weights_path=args.reid_weights,
+            reid_model_name=args.reid_model,
+            reid_match_thresh=args.reid_match_thresh,
+            reid_max_age=args.reid_max_age,
+            reid_device=args.reid_device,
+            edge_margin=args.edge_margin,
         )
         results[video_path.stem] = counts
         frame_stats[video_path.stem] = {

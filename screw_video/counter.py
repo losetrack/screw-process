@@ -1,8 +1,6 @@
 """
 Screw counter based on track IDs with majority voting
 """
-
-
 class ScrewCounter:
     """Count screws by tracking unique track IDs"""
 
@@ -46,7 +44,7 @@ class ScrewCounter:
 
     def get_counts_with_voting(self, tracker):
         """
-        Get final counts using tracker's class history (方案1: 轨迹级类别投票)
+        Get final counts using tracker's class history
 
         Args:
             tracker: ScrewTracker instance with track_class_history

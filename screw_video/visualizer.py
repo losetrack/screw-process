@@ -15,7 +15,7 @@ COLORS = [
 ]
 
 
-def draw_tracks(frame, tracks, alpha=0.4):
+def draw_tracks(frame, tracks, alpha=0.5):
     """
     Draw tracking results on frame with colored bounding boxes
 
@@ -50,7 +50,7 @@ def draw_tracks(frame, tracks, alpha=0.4):
 
         # Draw label text
         cv2.putText(overlay, label, (x1, y1 - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
     # Blend overlay with original frame
     result = cv2.addWeighted(frame, 1 - alpha, overlay, alpha, 0)
