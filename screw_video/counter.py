@@ -4,12 +4,13 @@ Screw counter based on track IDs with majority voting
 class ScrewCounter:
     """Count screws by tracking unique track IDs"""
 
-    def __init__(self, num_classes=5):
+    def __init__(self, num_classes=5, min_track_length=1):
         """
         Args:
             num_classes: Number of screw classes (default: 5)
         """
         self.num_classes = num_classes
+        self.min_track_length = min_track_length
         self.track_history = {}  # {track_id: {class_id: votes}}
 
     def update(self, tracks):
@@ -56,6 +57,8 @@ class ScrewCounter:
 
         # Use tracker's class history for more accurate voting
         for track_id in self.track_history.keys():
+            if tracker.get_track_length(track_id) < self.min_track_length:
+                continue
             final_class = tracker.get_track_final_class(track_id)
             if final_class is not None and 0 <= final_class < self.num_classes:
                 counts[final_class] += 1

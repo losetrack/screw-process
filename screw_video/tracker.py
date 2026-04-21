@@ -140,3 +140,9 @@ class ScrewTracker:
 
         # Return the most common class
         return Counter(class_history).most_common(1)[0][0]
+
+    def get_track_length(self, track_id):
+        """Get the number of frames associated with a track."""
+        if track_id not in self.track_class_history:
+            return 0
+        return len(self.track_class_history[track_id])

@@ -27,6 +27,7 @@ def process_video(
     reid_max_age=90,
     reid_device=None,
     edge_margin=0,
+    min_track_length=1,
 ):
     """
     Process a single video: detect, track, count screws
@@ -69,7 +70,7 @@ def process_video(
         reid_device=reid_device,
         edge_margin=edge_margin,
     )
-    counter = ScrewCounter()
+    counter = ScrewCounter(min_track_length=min_track_length)
 
     source_frame_idx = 0
     processed_frame_idx = 0
@@ -151,7 +152,7 @@ def main():
                         help='ByteTrack: detection confidence threshold')
     parser.add_argument('--track_buffer', type=int, default=40,
                         help='ByteTrack: number of frames to keep lost tracks')
-    parser.add_argument('--match_thresh', type=float, default=0.9,
+    parser.add_argument('--match_thresh', type=float, default=0.6,
                         help='ByteTrack: IOU matching threshold')
     parser.add_argument('--sample_interval', type=int, default=1,
                         help='When --process_sampled is enabled, keep one frame every N frames')
@@ -167,6 +168,8 @@ def main():
                         help='Device for OSNet Re-ID model, e.g. cpu or cuda:0')
     parser.add_argument('--edge_margin', type=int, default=0,
                         help='Ignore detections whose boxes touch the image border within this many pixels')
+    parser.add_argument('--min_track_length', type=int, default=1,
+                        help='Ignore tracks shorter than this many associated frames when counting')
     args = parser.parse_args()
 
     if args.sample_interval < 1:
@@ -223,7 +226,8 @@ def main():
                               reid_match_thresh=args.reid_match_thresh,
                               reid_max_age=args.reid_max_age,
                               reid_device=args.reid_device,
-                              edge_margin=args.edge_margin)
+                              edge_margin=args.edge_margin,
+                              min_track_length=args.min_track_length)
         results[video_path.stem] = counts
 
     total_time = time.time() - start_time

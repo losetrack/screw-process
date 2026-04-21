@@ -76,6 +76,7 @@ def process_video(
     reid_max_age=90,
     reid_device=None,
     edge_margin=0,
+    min_track_length=1,
 ):
     """Run detection + tracking + counting and export visualization video."""
     print(f"Processing {video_path.name}...")
@@ -105,8 +106,8 @@ def process_video(
 
     tracker = ScrewTracker(
         track_thresh=0.4,
-        track_buffer=30,
-        match_thresh=0.8,
+        track_buffer=20,
+        match_thresh=0.9,
         frame_rate=int(sampled_fps) if sampled_fps > 0 else 30,
         reid_weights_path=reid_weights_path,
         reid_model_name=reid_model_name,
@@ -115,7 +116,7 @@ def process_video(
         reid_device=reid_device,
         edge_margin=edge_margin,
     )
-    counter = ScrewCounter()
+    counter = ScrewCounter(min_track_length=min_track_length)
 
     source_frame_idx = 0
     processed_frame_idx = 0
@@ -186,8 +187,8 @@ def main():
     parser.add_argument("--video_path", type=str, default=None, help="Optional single video path")
     parser.add_argument("--output_dir", type=str, default="./vis_videos", help="Directory for visualization videos")
     parser.add_argument("--weights", type=str, default="weights/best.pt", help="Path to YOLO weights")
-    parser.add_argument("--conf", type=float, default=0.3, help="Confidence threshold")
-    parser.add_argument("--iou", type=float, default=0.55, help="IoU threshold")
+    parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold")
+    parser.add_argument("--iou", type=float, default=0.45, help="IoU threshold")
     parser.add_argument("--imgsz", type=int, default=640, help="Input image size")
     parser.add_argument("--max_frames", type=int, default=-1, help="Limit frames for quick debugging; -1 for full video")
     parser.add_argument("--display", action="store_true", help="Show live visualization window; press q to stop")
@@ -197,10 +198,11 @@ def main():
     parser.add_argument("--no_save_video", action="store_true", help="Disable writing visualization video to speed up testing")
     parser.add_argument("--reid_weights", type=str, default=None, help="Path to OSNet Re-ID weights; when provided, Re-ID-based ID matching is enabled")
     parser.add_argument("--reid_model", type=str, default="osnet_x0_25", help="OSNet backbone variant for Re-ID")
-    parser.add_argument("--reid_match_thresh", type=float, default=0.75, help="Cosine similarity threshold for Re-ID ID matching")
+    parser.add_argument("--reid_match_thresh", type=float, default=0.85, help="Cosine similarity threshold for Re-ID ID matching")
     parser.add_argument("--reid_max_age", type=int, default=90, help="Maximum frame gap for Re-ID matching")
     parser.add_argument("--reid_device", type=str, default='cuda:0', help="Device for OSNet Re-ID model, e.g. cpu or cuda:0")
-    parser.add_argument("--edge_margin", type=int, default=50, help="Ignore detections whose boxes touch the image border within this many pixels")
+    parser.add_argument("--edge_margin", type=int, default=30, help="Ignore detections whose boxes touch the image border within this many pixels")
+    parser.add_argument("--min_track_length", type=int, default=8, help="Ignore tracks shorter than this many associated frames when counting")
     args = parser.parse_args()
 
     if args.sample_interval < 1:
@@ -255,6 +257,7 @@ def main():
             reid_max_age=args.reid_max_age,
             reid_device=args.reid_device,
             edge_margin=args.edge_margin,
+            min_track_length=args.min_track_length,
         )
         results[video_path.stem] = counts
         frame_stats[video_path.stem] = {
