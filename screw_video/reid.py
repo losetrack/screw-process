@@ -89,11 +89,19 @@ class OSNetReID:
 class ReIDTrackMatcher:
     """Maintain global IDs by matching OSNet embeddings over time."""
 
-    def __init__(self, feature_extractor, match_thresh=0.75, max_age=90, feature_history=10):
+    def __init__(
+        self,
+        feature_extractor,
+        match_thresh=0.75,
+        max_age=90,
+        feature_history=10,
+        update_interval=5,
+    ):
         self.feature_extractor = feature_extractor
         self.match_thresh = match_thresh
         self.max_age = max_age
         self.feature_history = feature_history
+        self.update_interval = max(1, int(update_interval))
 
         self.frame_index = 0
         self.next_global_id = 1
@@ -110,11 +118,39 @@ class ReIDTrackMatcher:
         self.active_local_ids = current_local_ids
         used_global_ids = set()
 
-        boxes = [track["box"] for track in tracks]
-        features, valid_indices = self.feature_extractor.extract(frame, boxes)
-        feature_map = {track_idx: features[i] for i, track_idx in enumerate(valid_indices)}
-
+        request_indices = []
+        request_boxes = []
         new_track_indices = []
+
+        for idx, track in enumerate(tracks):
+            local_id = track["track_id"]
+            if local_id not in self.local_to_global:
+                # New local tracks always need an appearance feature for global ID assignment.
+                new_track_indices.append(idx)
+                request_indices.append(idx)
+                request_boxes.append(track["box"])
+                continue
+
+            global_id = self.local_to_global[local_id]
+            track_state = self.global_tracks.get(global_id)
+            if track_state is None:
+                # Recover gracefully if the local-global mapping exists but the global state was dropped.
+                new_track_indices.append(idx)
+                request_indices.append(idx)
+                request_boxes.append(track["box"])
+                continue
+
+            last_feature_frame = track_state.get("last_feature_frame", -self.update_interval)
+            if self.frame_index - last_feature_frame >= self.update_interval:
+                # Existing tracks refresh features sparsely to trade a small amount of accuracy for speed.
+                request_indices.append(idx)
+                request_boxes.append(track["box"])
+
+        features, valid_indices = self.feature_extractor.extract(frame, request_boxes)
+        feature_map = {
+            request_indices[track_idx]: features[i]
+            for i, track_idx in enumerate(valid_indices)
+        }
         for idx, track in enumerate(tracks):
             local_id = track["track_id"]
             class_id = track["class"]
@@ -123,11 +159,12 @@ class ReIDTrackMatcher:
                 global_id = self.local_to_global[local_id]
                 track_state = self.global_tracks.get(global_id)
                 if track_state is not None:
-                    self._update_global_track(global_id, feature, class_id)
+                    if feature is not None:
+                        self._update_global_track(global_id, feature, class_id)
+                    else:
+                        self._touch_global_track(global_id)
                 track["track_id"] = global_id
                 used_global_ids.add(global_id)
-            else:
-                new_track_indices.append(idx)
 
         for idx in new_track_indices:
             track = tracks[idx]
@@ -135,16 +172,14 @@ class ReIDTrackMatcher:
             class_id = track["class"]
             feature = feature_map.get(idx)
 
-            # Try to match with existing global track using Re-ID feature
+            # New ByteTrack IDs are matched against historical global IDs here.
             global_id = self._match_existing_track(feature, class_id, used_global_ids)
 
             if global_id is None:
-                # No match found or feature extraction failed - create new global track
-                # Note: If feature is None, this creates a track without appearance info
-                # which may lead to ID fragmentation, but preserves ByteTrack's continuity
+                # If no historical track matches, start a new global identity.
                 global_id = self._create_global_track(feature, class_id)
             else:
-                # Matched existing track - update its appearance model
+                # A successful match also refreshes that identity's appearance prototype.
                 self._update_global_track(global_id, feature, class_id)
 
             self.local_to_global[local_id] = global_id
@@ -169,7 +204,7 @@ class ReIDTrackMatcher:
             if track_state["class_id"] != class_id:
                 continue
 
-            # Skip tracks without valid prototype (shouldn't happen in normal flow)
+            # Matching is restricted to same-class historical identities with a valid appearance prototype.
             if track_state["prototype"] is None:
                 continue
 
@@ -188,6 +223,7 @@ class ReIDTrackMatcher:
             "prototype": feature,
             "features": deque([feature] if feature is not None else [], maxlen=self.feature_history),
             "last_seen": self.frame_index,
+            "last_feature_frame": self.frame_index if feature is not None else -self.update_interval,
         }
         return global_id
 
@@ -200,8 +236,13 @@ class ReIDTrackMatcher:
 
         track_state["features"].append(feature)
         stacked = np.stack(track_state["features"])
+        # Keep a short moving prototype so appearance can adapt without drifting too fast.
         prototype = stacked.mean(axis=0)
         norm = np.linalg.norm(prototype)
         if norm > 0:
             prototype = prototype / norm
         track_state["prototype"] = prototype.astype(np.float32)
+        track_state["last_feature_frame"] = self.frame_index
+
+    def _touch_global_track(self, global_id):
+        self.global_tracks[global_id]["last_seen"] = self.frame_index

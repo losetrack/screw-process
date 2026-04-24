@@ -6,6 +6,7 @@ import argparse
 import cv2
 import numpy as np
 import time
+import torch
 from pathlib import Path
 from detector import ScrewDetector
 from tracker import ScrewTracker
@@ -25,6 +26,7 @@ def process_video(
     reid_model_name="osnet_x0_25",
     reid_match_thresh=0.75,
     reid_max_age=90,
+    reid_update_interval=5,
     reid_device=None,
     edge_margin=0,
     min_track_length=1,
@@ -67,6 +69,7 @@ def process_video(
         reid_model_name=reid_model_name,
         reid_match_thresh=reid_match_thresh,
         reid_max_age=reid_max_age,
+        reid_update_interval=reid_update_interval,
         reid_device=reid_device,
         edge_margin=edge_margin,
     )
@@ -103,6 +106,7 @@ def process_video(
             if len(tracks) > 0:
                 distance_to_middle = abs(source_frame_idx - middle_frame_idx)
                 if best_mask_distance is None or distance_to_middle < best_mask_distance:
+                    # Keep only one representative visualization frame per video.
                     best_mask_distance = distance_to_middle
                     mask_frame = frame.copy()
                     mask_tracks = tracks
@@ -124,6 +128,7 @@ def process_video(
         print(f"  Saved mask to {mask_path}")
 
     # Get final counts using majority voting from tracker
+    # Voting and short-track filtering happen at the counting stage rather than per-frame.
     counts = counter.get_counts_with_voting(tracker)
     print(f"  Counts: {counts}")
 
@@ -144,19 +149,21 @@ def main():
                         help='Path to YOLO weights')
     parser.add_argument('--conf', type=float, default=0.25,
                         help='Confidence threshold')
-    parser.add_argument('--iou', type=float, default=0.50,
+    parser.add_argument('--iou', type=float, default=0.45,
                         help='IoU threshold for NMS')
     parser.add_argument('--imgsz', type=int, default=640,
                         help='Input image size')
+    parser.add_argument('--detector_device', type=str, default='cuda:0',
+                        help='Device for YOLO detector, e.g. cuda:0 or cpu; defaults to cuda:0 when available')
     parser.add_argument('--track_thresh', type=float, default=0.4,
                         help='ByteTrack: detection confidence threshold')
-    parser.add_argument('--track_buffer', type=int, default=40,
+    parser.add_argument('--track_buffer', type=int, default=30,
                         help='ByteTrack: number of frames to keep lost tracks')
-    parser.add_argument('--match_thresh', type=float, default=0.6,
+    parser.add_argument('--match_thresh', type=float, default=0.9,
                         help='ByteTrack: IOU matching threshold')
-    parser.add_argument('--sample_interval', type=int, default=1,
+    parser.add_argument('--sample_interval', type=int, default=2,
                         help='When --process_sampled is enabled, keep one frame every N frames')
-    parser.add_argument('--reid_weights', type=str, default=None,
+    parser.add_argument('--reid_weights', type=str, default='weights/osnet_x0_25_screw.pth.tar',
                         help='Path to OSNet Re-ID weights; when provided, Re-ID-based ID matching is enabled')
     parser.add_argument('--reid_model', type=str, default='osnet_x0_25',
                         help='OSNet backbone variant for Re-ID')
@@ -164,11 +171,13 @@ def main():
                         help='Cosine similarity threshold for Re-ID ID matching')
     parser.add_argument('--reid_max_age', type=int, default=90,
                         help='Maximum frame gap for Re-ID matching')
+    parser.add_argument('--reid_update_interval', type=int, default=5,
+                        help='Update Re-ID features for existing tracks every N processed frames')
     parser.add_argument('--reid_device', type=str, default=None,
                         help='Device for OSNet Re-ID model, e.g. cpu or cuda:0')
-    parser.add_argument('--edge_margin', type=int, default=0,
+    parser.add_argument('--edge_margin', type=int, default=30,
                         help='Ignore detections whose boxes touch the image border within this many pixels')
-    parser.add_argument('--min_track_length', type=int, default=1,
+    parser.add_argument('--min_track_length', type=int, default=8,
                         help='Ignore tracks shorter than this many associated frames when counting')
     args = parser.parse_args()
 
@@ -177,11 +186,14 @@ def main():
 
     # Initialize detector
     print(f"Loading YOLO model from {args.weights}...")
+    detector_device = args.detector_device or ('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"Using detector device: {detector_device}")
     detector = ScrewDetector(
         weights_path=args.weights,
         conf=args.conf,
         iou=args.iou,
-        imgsz=args.imgsz
+        imgsz=args.imgsz,
+        device=detector_device,
     )
 
     # Create output directories
@@ -225,6 +237,7 @@ def main():
                               reid_model_name=args.reid_model,
                               reid_match_thresh=args.reid_match_thresh,
                               reid_max_age=args.reid_max_age,
+                              reid_update_interval=args.reid_update_interval,
                               reid_device=args.reid_device,
                               edge_margin=args.edge_margin,
                               min_track_length=args.min_track_length)

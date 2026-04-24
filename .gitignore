@@ -3,6 +3,8 @@ __pycache__/
 CLAUDE.md
 *.pt
 *.MOV
+*.png
+*.jpg
 homograpy_restore/data/
 homograpy_restore/restored_images/
 screw_count/data/
@@ -17,3 +19,5 @@ screw_segment/output/
 screw_segment/weights/
 screw_video/mask_folder/
 screw_video/vis_videos/
+screw_video/sampled_videos
+screw_video/reid_dataset/

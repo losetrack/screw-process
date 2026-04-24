@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import cv2
+import torch
 
 from detector import ScrewDetector
 from tracker import ScrewTracker
@@ -74,6 +75,7 @@ def process_video(
     reid_model_name="osnet_x0_25",
     reid_match_thresh=0.75,
     reid_max_age=90,
+    reid_update_interval=5,
     reid_device=None,
     edge_margin=0,
     min_track_length=1,
@@ -106,13 +108,14 @@ def process_video(
 
     tracker = ScrewTracker(
         track_thresh=0.4,
-        track_buffer=20,
+        track_buffer=30,
         match_thresh=0.9,
         frame_rate=int(sampled_fps) if sampled_fps > 0 else 30,
         reid_weights_path=reid_weights_path,
         reid_model_name=reid_model_name,
         reid_match_thresh=reid_match_thresh,
         reid_max_age=reid_max_age,
+        reid_update_interval=reid_update_interval,
         reid_device=reid_device,
         edge_margin=edge_margin,
     )
@@ -190,6 +193,7 @@ def main():
     parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold")
     parser.add_argument("--iou", type=float, default=0.45, help="IoU threshold")
     parser.add_argument("--imgsz", type=int, default=640, help="Input image size")
+    parser.add_argument("--detector_device", type=str, default=None, help="Device for YOLO detector, e.g. cuda:0 or cpu; defaults to cuda:0 when available")
     parser.add_argument("--max_frames", type=int, default=-1, help="Limit frames for quick debugging; -1 for full video")
     parser.add_argument("--display", action="store_true", help="Show live visualization window; press q to stop")
     parser.add_argument("--wait_ms", type=int, default=1, help="cv2.waitKey delay in milliseconds")
@@ -198,8 +202,9 @@ def main():
     parser.add_argument("--no_save_video", action="store_true", help="Disable writing visualization video to speed up testing")
     parser.add_argument("--reid_weights", type=str, default=None, help="Path to OSNet Re-ID weights; when provided, Re-ID-based ID matching is enabled")
     parser.add_argument("--reid_model", type=str, default="osnet_x0_25", help="OSNet backbone variant for Re-ID")
-    parser.add_argument("--reid_match_thresh", type=float, default=0.85, help="Cosine similarity threshold for Re-ID ID matching")
+    parser.add_argument("--reid_match_thresh", type=float, default=0.75, help="Cosine similarity threshold for Re-ID ID matching")
     parser.add_argument("--reid_max_age", type=int, default=90, help="Maximum frame gap for Re-ID matching")
+    parser.add_argument("--reid_update_interval", type=int, default=10, help="Update Re-ID features for existing tracks every N processed frames")
     parser.add_argument("--reid_device", type=str, default='cuda:0', help="Device for OSNet Re-ID model, e.g. cpu or cuda:0")
     parser.add_argument("--edge_margin", type=int, default=30, help="Ignore detections whose boxes touch the image border within this many pixels")
     parser.add_argument("--min_track_length", type=int, default=8, help="Ignore tracks shorter than this many associated frames when counting")
@@ -219,11 +224,14 @@ def main():
 
     print(f"Found {len(video_files)} video(s)")
 
+    detector_device = args.detector_device or ("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Using detector device: {detector_device}")
     detector = ScrewDetector(
         weights_path=args.weights,
         conf=args.conf,
         iou=args.iou,
         imgsz=args.imgsz,
+        device=detector_device,
     )
 
     output_dir = Path(args.output_dir)
@@ -255,6 +263,7 @@ def main():
             reid_model_name=args.reid_model,
             reid_match_thresh=args.reid_match_thresh,
             reid_max_age=args.reid_max_age,
+            reid_update_interval=args.reid_update_interval,
             reid_device=args.reid_device,
             edge_margin=args.edge_margin,
             min_track_length=args.min_track_length,

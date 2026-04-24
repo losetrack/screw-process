@@ -20,6 +20,7 @@ class ScrewTracker:
         reid_model_name="osnet_x0_25",
         reid_match_thresh=0.75,
         reid_max_age=90,
+        reid_update_interval=5,
         reid_device=None,
         edge_margin=0,
     ):
@@ -48,6 +49,7 @@ class ScrewTracker:
                 feature_extractor=reid_extractor,
                 match_thresh=reid_match_thresh,
                 max_age=reid_max_age,
+                update_interval=reid_update_interval,
             )
         # Track class history for voting
         self.track_class_history = {}  # {track_id: [class_id, class_id, ...]}
@@ -60,6 +62,7 @@ class ScrewTracker:
         filtered = []
         for det in detections:
             x1, y1, x2, y2 = det['box']
+            # Border-touching boxes are often truncated objects and tend to create unstable tracks.
             if x1 <= self.edge_margin:
                 continue
             if y1 <= self.edge_margin:
