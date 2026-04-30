@@ -20,4 +20,6 @@ screw_segment/weights/
 screw_video/mask_folder/
 screw_video/vis_videos/
 screw_video/sampled_videos
-screw_video/reid_dataset/
+screw_video/reid_dataset_torchreid/
+screw_video/weights/
+screw_video/reid_runs
