@@ -299,7 +299,7 @@ AUG_PIPELINE = [
     (aug_shadow,             {},                           0.5),
     (aug_blur,               {},                           0.3),
     (aug_scale_crop,         {},                           0.5),
-    (aug_cutout,             {},                           0.4),
+    (aug_cutout,             {},                           0.3),
     (aug_perspective,        {'distort': 0.04},            0.2),
     (aug_erase_markers,      {},                           0.5),
 ]
@@ -317,10 +317,10 @@ def apply_pipeline(img, labels):
 
 
 # 主流程
-def build_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
+def build_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42, val_ratio=0.2):
     """
-    先划分 train/val，再只对 train 做增强。
-    原图全部进 val（干净数据评估），增强图全部进 train。
+    按比例划分原图到 train_src/val。
+    val 使用原图（干净数据评估），train_src 原图和增强图都写入 train。
     """
     random.seed(seed)
     np.random.seed(seed)
@@ -341,7 +341,16 @@ def build_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
     if not img_paths:
         raise FileNotFoundError(f"No images found in {img_dir}")
 
-    print(f"Found {len(img_paths)} original images")
+    if not (0.0 < val_ratio < 1.0):
+        raise ValueError(f"val_ratio must be in (0,1), got {val_ratio}")
+
+    random.shuffle(img_paths)
+    n_total = len(img_paths)
+    n_val_target = max(1, int(round(n_total * val_ratio))) if n_total > 1 else 1
+    val_set = set(img_paths[:n_val_target])
+
+    print(f"Found {n_total} original images")
+    print(f"Split: val={len(val_set)}, train_src={n_total - len(val_set)}")
     n_train = 0
     n_val = 0
 
@@ -355,13 +364,21 @@ def build_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
         labels = load_yolo_labels(label_path)
         stem = img_path.stem
 
-        # 原图 → val（干净数据用于验证）
-        shutil.copy(img_path, out / 'val' / 'images' / img_path.name)
-        if label_path.exists():
-            shutil.copy(label_path, out / 'val' / 'labels' / label_path.name)
-        n_val += 1
+        # 原图按比例进入 val（干净数据用于验证）
+        if img_path in val_set:
+            shutil.copy(img_path, out / 'val' / 'images' / img_path.name)
+            if label_path.exists():
+                shutil.copy(label_path, out / 'val' / 'labels' / label_path.name)
+            n_val += 1
+            continue
 
-        # 增强图 → train
+        # 其余原图进入 train（保留原始分布）
+        shutil.copy(img_path, out / 'train' / 'images' / img_path.name)
+        if label_path.exists():
+            shutil.copy(label_path, out / 'train' / 'labels' / label_path.name)
+        n_train += 1
+
+        # 其余原图再做增强，增强结果进入 train
         for i in range(aug_per_image):
             aug_img, aug_labels = apply_pipeline(img.copy(), [lb[:] for lb in labels])
             out_name = f"{stem}_aug{i:04d}"
@@ -370,7 +387,6 @@ def build_dataset(img_dir, label_dir, output_dir, aug_per_image, seed=42):
             save_yolo_labels(out / 'train' / 'labels' / f"{out_name}.txt", aug_labels)
             n_train += 1
 
-        print(f"  {img_path.name}: val=1(原图), train=+{aug_per_image}(增强)")
 
     print(f"\nDone! train={n_train}, val={n_val}")
     print(f"  train/images → {out / 'train' / 'images'}")
@@ -386,8 +402,9 @@ if __name__ == '__main__':
     parser.add_argument('--label_dir',     default='./data/labels',    help='YOLO标注目录')
     parser.add_argument('--output_dir',    default='./augmented', help='输出目录')
     parser.add_argument('--aug_per_image', type=int, default=50,  help='每张图增强几倍')
+    parser.add_argument('--val_ratio',     type=float, default=0.2, help='原图划分到验证集的比例 (0,1)')
     parser.add_argument('--seed',          type=int, default=42)
     args = parser.parse_args()
 
     build_dataset(args.img_dir, args.label_dir, args.output_dir,
-                  args.aug_per_image, args.seed)
+                  args.aug_per_image, args.seed, args.val_ratio)
