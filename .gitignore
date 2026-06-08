@@ -1,10 +1,29 @@
+# IDE / Editor
 .vscode/
+
+# Python
 __pycache__/
-CLAUDE.md
+*.py[cod]
+*.pyc
+.ipynb_checkpoints/
+
+# Model weights & outputs
 *.pt
+*.pth
+*.onnx
+*.npy
+
+# Video files
 *.MOV
+*.mp4
+*.avi
+*.mkv
+
+# Module 1: Homography Restore
 homograpy_restore/data/
 homograpy_restore/restored_images/
+
+# Module 2: Screw Count
 screw_count/data/
 screw_count/augmented/
 screw_count/weights/
@@ -12,6 +31,20 @@ screw_count/runs/
 screw_count/screws.yaml
 screw_count/vis/
 screw_count/test/
+
+# Module 3: Screw Segment
 screw_segment/data/
 screw_segment/output/
 screw_segment/weights/
+
+# Module 4: Screw Video
+screw_video/mask_folder/
+screw_video/vedio_exp/
+screw_video/vis_videos/
+screw_video/weights/
+screw_video/reid_dataset_torchreid/
+screw_video/reid_runs/
+screw_video/sampled_videos/
+
+# CLAUDE.md
+CLAUDE.md
