@@ -121,4 +121,3 @@ ScrewProcess/
 - 各模块相互独立，可单独运行
 - 所有模块均使用 OpenCV BGR 格式处理图像
 - CUDA 自动检测，默认优先使用 GPU
-- 详细指南见 `CLAUDE.md`
